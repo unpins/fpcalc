@@ -12,18 +12,18 @@ Reads an audio file in any common format (MP3/FLAC/Ogg/AAC/Opus/WAV/…), decode
 it, and prints its Chromaprint fingerprint — with a full FFmpeg decoder linked in
 statically.
 
-## Installation
+## Usage
 
-Install with [unpin](https://github.com/unpins/unpin):
+Run the `fpcalc` program with [unpin](https://github.com/unpins/unpin):
 
 ```bash
-unpin fpcalc
+unpin fpcalc song.mp3
 ```
 
-Or run without installing:
+To install it onto your PATH:
 
 ```bash
-unpin run fpcalc -- song.mp3
+unpin install fpcalc
 ```
 
 ## Build locally
