@@ -1,7 +1,8 @@
 # fpcalc
 
-Standalone build of [fpcalc](https://github.com/acoustid/chromaprint) — the
-Chromaprint audio fingerprinting CLI (used by AcoustID/MusicBrainz).
+[fpcalc](https://github.com/acoustid/chromaprint) — the Chromaprint audio
+fingerprinting CLI (used by AcoustID/MusicBrainz). A single self-contained
+binary, built natively for Linux, macOS, and Windows.
 
 [![CI](https://github.com/unpins/fpcalc/actions/workflows/fpcalc.yml/badge.svg)](https://github.com/unpins/fpcalc/actions)
 ![Linux](https://img.shields.io/badge/Linux-✓-success?logo=linux&logoColor=white)
@@ -11,6 +12,8 @@ Chromaprint audio fingerprinting CLI (used by AcoustID/MusicBrainz).
 Reads an audio file in any common format (MP3/FLAC/Ogg/AAC/Opus/WAV/…), decodes
 it, and prints its Chromaprint fingerprint — with a full FFmpeg decoder linked in
 statically.
+
+Part of the [unpins](https://unpins.org) catalog; install it with [`unpin`](https://github.com/unpins/unpin): `unpin install fpcalc`.
 
 ## Usage
 
