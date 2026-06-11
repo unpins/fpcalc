@@ -1,5 +1,5 @@
 {
-  description = "Standalone build of fpcalc (Chromaprint audio fingerprinter)";
+  description = "fpcalc (Chromaprint audio fingerprinter) as a single self-contained binary";
 
   nixConfig = {
     extra-substituters = [ "https://unpins.cachix.org" ];
