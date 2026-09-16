@@ -176,6 +176,9 @@
           # us, so the darwin cmake/link shim below is only needed on the
           # non-engine path (there is none today, but keep it gated cleanly).
           isDarwin = hostIsDarwin && engineStdenv == null;
+          # "can this host run what it just built" — true on the three native
+          # CI jobs, false on every cross target.
+          canRun = chromaprint.stdenv.buildPlatform.canExecute host;
         in
         (chromaprint.override ({
           ffmpeg-headless = minimalFfmpeg {
@@ -184,7 +187,24 @@
           };
           withExamples = false;
         } // sp.lib.optionalAttrs (engineStdenv != null) { stdenv = engineStdenv; })).overrideAttrs (old: {
-          doCheck = false;
+          # Upstream's suite is 98 unit tests plus a fingerprint of a real
+          # 9 MB recording compared against a known hash. It passes under
+          # static musl and the engine and runs in milliseconds.
+          doCheck = canRun;
+          # Then the same question of the binary that actually ships, after the
+          # strip: upstream keeps an answer key beside the code — a sample MP3
+          # and the exact output fpcalc must print for it, which upstream's own
+          # CI diffs on Linux, macOS and Windows. The smoke gate (`-version`)
+          # decodes nothing: the one bug this package has hit, a clang LTO
+          # miscompile of FFmpeg's teardown on darwin, crashed on the first
+          # decode and stayed green through all of it.
+          doInstallCheck = canRun;
+          installCheckPhase = ''
+            runHook preInstallCheck
+            "$out/bin/fpcalc" -raw "$src/tests/data/test.mp3" \
+              | diff -u - "$src/tests/data/test.mp3.fpcalc.out"
+            runHook postInstallCheck
+          '';
           # chromaprint is C++. On mingw its CMake links fpcalc.exe without
           # -static, so the toolchain runtime (libstdc++-6.dll, libgcc_s_seh-1.dll)
           # rides along as companion DLLs — `-static` folds it in, leaving only
@@ -216,20 +236,13 @@
     ulib.mkStandaloneFlake {
       inherit self;
       name = "fpcalc";
-      # fpcalc has no upstream man page (chromaprint ships none), so embedMan is
-      # left default-on only to run the post-build embed wrap — the man step
-      # warn-skips (nothing to graft), but the wrap is also what applies
-      # removeReferences below. binName drives the (absent) man lookup, not the
-      # chromaprint attr, so no pkgsAttr is needed.
+      # chromaprint ships no man page, so the man step warn-skips (nothing to
+      # graft) and the binary carries no payload at all. binName drives that
+      # (absent) lookup, not the chromaprint attr, so no pkgsAttr is needed.
       binName = "fpcalc";
       smoke = [ "-version" ];
       smokePattern = "fpcalc version 1\\.6";
       engine = "unpin-llvm";
-      # libavutil bakes ffmpeg's configure line (including `--prefix=/nix/store/
-      # …-ffmpeg-headless-…`) into its build-config string, which chromaprint
-      # links in. Those paths are inert (fpcalc never reads them), but nix scans
-      # them as references. Scrub them so the shipped binary stays 0-ref.
-      removeReferences = [ "ffmpeg-headless" ];
       build = pkgs: mk {
         sp = pkgs.pkgsStatic;
         engineStdenv = engStdenv pkgs;

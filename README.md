@@ -61,3 +61,15 @@ The [Releases](https://github.com/unpins/fpcalc/releases) page has standalone bi
   disabled — fpcalc never uses them and their COM GUIDs would otherwise go
   undefined when linking the library directly.
 - No man page upstream, so none is embedded.
+
+### Tests
+
+Upstream's test suite runs on every build that can execute what it just
+produced — the Linux x86_64/arm64 and macOS jobs in CI — and it is more than
+unit tests: it also fingerprints a full nine-megabyte recording and checks the
+result against a known hash. The installed binary is then measured once more
+against the answer key upstream keeps beside its code: a sample MP3 and the
+exact output `fpcalc` must print for it. Cross-compiled targets (Windows, i686,
+ppc64le, riscv64, armv7l) can't run where they are built, so there the version
+smoke is the floor; the fingerprints they produce were compared by hand against
+the Linux ones and are identical, byte for byte, on every platform shipped.
