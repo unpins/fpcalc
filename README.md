@@ -10,8 +10,8 @@ binary, built natively for Linux, macOS, and Windows.
 ![Windows](https://img.shields.io/badge/Windows-✓-success?logo=windows&logoColor=white)
 
 Reads an audio file in any common format (MP3/FLAC/Ogg/AAC/Opus/WAV/…), decodes
-it, and prints its Chromaprint fingerprint — with a full FFmpeg decoder linked in
-statically.
+it, and prints its Chromaprint fingerprint — with a full FFmpeg decoder built
+in.
 
 Part of the [unpins](https://unpins.org) catalog; install it with [`unpin`](https://github.com/unpins/unpin): `unpin install fpcalc`.
 
