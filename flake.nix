@@ -40,6 +40,8 @@
           native = pkgs.stdenv.buildPlatform.system == pkgs.stdenv.hostPlatform.system;
           cxx = true;
           lto = true;
+          # The multicall module hook replays fpcalc's link from its sidecar.
+          captureLinks = true;
         };
 
       # Non-LTO engine stdenv, used for FFmpeg on darwin only. clang-21's
@@ -108,16 +110,15 @@
           # leaves them undefined. fpcalc uses FFmpeg's native decoders (native
           # AAC, not AudioToolbox), so drop both.
           configureFlags = (old.configureFlags or [ ])
-            # Native builds run under the unpin-llvm engine, whose cc-wrapper
+            # Every target builds under the unpin-llvm engine, whose cc-wrapper
             # exposes `<triple>-cc`/`-clang`/`-c++` but NO `<triple>-gcc`.
             # ffmpeg's configure defaults its cross compiler to
             # `${cross-prefix}gcc`, which isn't found. Point it at the engine's
-            # `cc`/`c++` explicitly. Windows (mingw, off-engine) keeps the real
-            # `${prefix}gcc`, so gate this off there.
-            ++ (if !isWindows then [
+            # `cc`/`c++` explicitly.
+            ++ [
               "--cc=${host.config}-cc"
               "--cxx=${host.config}-c++"
-            ] else [ ])
+            ]
             ++ (if isWindows then [
               "--disable-mediafoundation"
               "--disable-d3d11va"
@@ -149,6 +150,17 @@
             + (if isPower then ''
               substituteInPlace libavcodec/ppc/mathops.h \
                 --replace-fail '#if HAVE_PPC4XX' '#if 0'
+            '' else "")
+            # mingw: configure's guard for llvm/llvm-project#76046 (LTO + COFF
+            # cannot see labels defined inside inline asm) sits under ffmpeg's
+            # own `--enable-lto`, while here `-flto` comes from the engine
+            # stdenv. The probe then passes, and mlpdsp's `ff_mlp_*order_*`
+            # come out undefined at fpcalc's link. Same fix as the ffmpeg
+            # package.
+            + (if isWindows then ''
+              substituteInPlace configure \
+                --replace-fail 'check_inline_asm inline_asm_nonlocal_labels' \
+                               'disable inline_asm_nonlocal_labels #'
             '' else "");
           # libavutil/riscv/cpu.c builds whenever <asm/hwprobe.h> is present and
           # calls syscall(__NR_riscv_hwprobe, …), but this musl's <sys/syscall.h>
@@ -170,7 +182,6 @@
         let
           chromaprint = sp.chromaprint;
           host = chromaprint.stdenv.hostPlatform;
-          isWindows = host.isWindows or false;
           hostIsDarwin = host.isDarwin or false;
           # Under the engine (native builds) the adapter folds static libc++ for
           # us, so the darwin cmake/link shim below is only needed on the
@@ -205,15 +216,10 @@
               | diff -u - "$src/tests/data/test.mp3.fpcalc.out"
             runHook postInstallCheck
           '';
-          # chromaprint is C++. On mingw its CMake links fpcalc.exe without
-          # -static, so the toolchain runtime (libstdc++-6.dll, libgcc_s_seh-1.dll)
-          # rides along as companion DLLs — `-static` folds it in, leaving only
-          # system DLLs (kernel32/msvcrt/shell32/bcrypt). On darwin the link
-          # would pull the dynamic /usr/lib/libc++.1.dylib, which the unpins
+          # chromaprint is C++. On darwin the link would pull the dynamic /usr/lib/libc++.1.dylib, which the unpins
           # portability allowlist rejects; -search_paths_first makes ld64 prefer
           # the static libc++ from the shim that preConfigure plants below.
           cmakeFlags = (old.cmakeFlags or [ ])
-            ++ (if isWindows then [ "-DCMAKE_EXE_LINKER_FLAGS=-static" ] else [ ])
             ++ (if isDarwin then [ "-DCMAKE_EXE_LINKER_FLAGS=-Wl,-search_paths_first" ] else [ ])
             # darwin (engine included): pin the FFT to FFmpeg's av_tx (the same
             # backend linux/windows use) instead of letting cmake auto-pick
@@ -243,6 +249,11 @@
       smoke = [ "-version" ];
       smokePattern = "fpcalc version 1\\.6";
       engine = "unpin-llvm";
+      multicall = {
+        # The `.exe` on the engine too, not the nixpkgs mingw-gcc cross.
+        windows = true;
+        programs = [{ name = "fpcalc"; }];
+      };
       build = pkgs: mk {
         sp = pkgs.pkgsStatic;
         engineStdenv = engStdenv pkgs;
