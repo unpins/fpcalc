@@ -176,17 +176,13 @@
         });
 
       # `sp` is the static package set for the target (pkgsStatic or
-      # mingwStaticCross); we take chromaprint/ffmpeg-headless/libcxx from it.
+      # mingwStaticCross); we take chromaprint/ffmpeg-headless from it.
       # withExamples drops the demo binaries; withTools (default) keeps fpcalc.
       mk = { sp, engineStdenv ? null, appleSdk ? null, ffmpegStdenv ? null }:
         let
           chromaprint = sp.chromaprint;
           host = chromaprint.stdenv.hostPlatform;
           hostIsDarwin = host.isDarwin or false;
-          # Under the engine (native builds) the adapter folds static libc++ for
-          # us, so the darwin cmake/link shim below is only needed on the
-          # non-engine path (there is none today, but keep it gated cleanly).
-          isDarwin = hostIsDarwin && engineStdenv == null;
           # "can this host run what it just built" — true on the three native
           # CI jobs, false on every cross target.
           canRun = chromaprint.stdenv.buildPlatform.canExecute host;
@@ -216,27 +212,19 @@
               | diff -u - "$src/tests/data/test.mp3.fpcalc.out"
             runHook postInstallCheck
           '';
-          # chromaprint is C++. On darwin the link would pull the dynamic /usr/lib/libc++.1.dylib, which the unpins
-          # portability allowlist rejects; -search_paths_first makes ld64 prefer
-          # the static libc++ from the shim that preConfigure plants below.
+          # chromaprint is C++, and every target here builds under the engine,
+          # whose clang++ links its own static libc++/libc++abi by default. No
+          # archive is named and nothing imports /usr/lib/libc++.1.dylib, so the
+          # darwin allowlist (otool -L = libSystem only) is satisfied without
+          # naming nixpkgs' libc++ — see docs/platforms/darwin.md.
+          #
+          # darwin: pin the FFT to FFmpeg's av_tx (the same backend linux/windows
+          # use) instead of letting cmake auto-pick Apple's vDSP when it finds
+          # Accelerate via SDKROOT. av_tx keeps the binary framework-free, uniform
+          # across platforms; its teardown is fine now the LTO miscompile is gone
+          # (see ffStdenv).
           cmakeFlags = (old.cmakeFlags or [ ])
-            ++ (if isDarwin then [ "-DCMAKE_EXE_LINKER_FLAGS=-Wl,-search_paths_first" ] else [ ])
-            # darwin (engine included): pin the FFT to FFmpeg's av_tx (the same
-            # backend linux/windows use) instead of letting cmake auto-pick
-            # Apple's vDSP when it finds Accelerate via SDKROOT. av_tx keeps the
-            # binary framework-free (only libSystem), uniform across platforms;
-            # its teardown is fine now the LTO miscompile is gone (see ffStdenv).
             ++ (if hostIsDarwin then [ "-DFFT_LIB=avtx" ] else [ ]);
-          preConfigure = (old.preConfigure or "") + (if isDarwin then ''
-            # Expose static libc++/libc++abi as libc++.a/libstdc++.a/libc++abi.a
-            # ahead of the dylib dirs; combined with -search_paths_first this
-            # folds libc++ into fpcalc instead of importing the dylib.
-            mkdir -p "$TMPDIR/cxx-static"
-            ln -sf ${sp.libcxx}/lib/libc++.a    "$TMPDIR/cxx-static/libc++.a"
-            ln -sf ${sp.libcxx}/lib/libc++.a    "$TMPDIR/cxx-static/libstdc++.a"
-            ln -sf ${sp.libcxx}/lib/libc++abi.a "$TMPDIR/cxx-static/libc++abi.a"
-            export NIX_LDFLAGS="-L$TMPDIR/cxx-static $NIX_LDFLAGS"
-          '' else "");
         });
     in
     ulib.mkStandaloneFlake {
