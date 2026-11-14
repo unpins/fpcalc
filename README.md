@@ -56,8 +56,7 @@ The [Releases](https://github.com/unpins/fpcalc/releases) page has standalone bi
   `libavcodec`/`libavformat`/`libavutil`/`libswresample`, with **no external
   codec libraries**. FFmpeg's native decoders still cover the common formats, so
   the full video/subtitle/network closure (x264/x265/dav1d/gnutls/…) is dropped.
-- **Windows:** `mingw` cross, single `.exe`, no companion DLLs (the C++ runtime
-  is folded static). FFmpeg's Windows-only MediaFoundation/D3D/DXVA paths are
+- **Windows:** built with mingw-w64. FFmpeg's Windows-only MediaFoundation/D3D/DXVA paths are
   disabled — fpcalc never uses them and their COM GUIDs would otherwise go
   undefined when linking the library directly.
 - No man page upstream, so none is embedded.
