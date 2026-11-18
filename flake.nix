@@ -29,21 +29,6 @@
     let
       ulib = unpins-lib.lib;
 
-      # chromaprint is C++; build it under the unpin-llvm engine (all objects
-      # bitcode, cmake drives the whole-program LTO link through the engine
-      # cc-wrapper). FFmpeg's decode-only .a's link as ordinary static archives.
-      engStdenv = pkgs:
-        let sp = pkgs.pkgsStatic; in
-        ulib.unpinAdapterStdenv {
-          inherit pkgs;
-          target = sp.stdenv.hostPlatform.config;
-          native = pkgs.stdenv.buildPlatform.system == pkgs.stdenv.hostPlatform.system;
-          cxx = true;
-          lto = true;
-          # The multicall module hook replays fpcalc's link from its sidecar.
-          captureLinks = true;
-        };
-
       # Non-LTO engine stdenv, used for FFmpeg on darwin only. clang-21's
       # whole-program LTO miscompiles FFmpeg's teardown code on x86_64-darwin
       # (a 64-bit pointer is emitted as a 32-bit `movl`, truncating it → SIGSEGV
@@ -136,32 +121,9 @@
             ++ (if isAarch32 then [ "--extra-cflags=-mfpu=neon" ]
                 else if isPower then [ "--cpu=power8" "--extra-cflags=-mvsx" ]
                 else [ ]);
-          # ppc64le: configure's `check_inline_asm ppc4xx '"maclhw…"'` probe
-          # false-positives under the engine (clang's native asm parser accepts
-          # the PPC405/440 `maclhw`/`mullhw` even for a POWER8 target), so it sets
-          # HAVE_PPC4XX=1 and libavcodec/ppc/mathops.h emits those embedded-only
-          # MACs — which ld.lld's stricter LTO codegen then rejects as invalid.
-          # `--disable-ppc4xx` only clears CONFIG_PPC4XX, not the HAVE_ capability
-          # the header guards on, so neutralize the guard at the source (the only
-          # maclhw/mullhw users in the tree; MULH's `mulhw` is standard POWER and
-          # MAC64/MLS64 are `#if !ARCH_PPC64`, both fine). POWER8 is not a 4xx core,
-          # so this is a misdetection fix, not a feature loss.
-          postPatch = (old.postPatch or "")
-            + (if isPower then ''
-              substituteInPlace libavcodec/ppc/mathops.h \
-                --replace-fail '#if HAVE_PPC4XX' '#if 0'
-            '' else "")
-            # mingw: configure's guard for llvm/llvm-project#76046 (LTO + COFF
-            # cannot see labels defined inside inline asm) sits under ffmpeg's
-            # own `--enable-lto`, while here `-flto` comes from the engine
-            # stdenv. The probe then passes, and mlpdsp's `ff_mlp_*order_*`
-            # come out undefined at fpcalc's link. Same fix as the ffmpeg
-            # package.
-            + (if isWindows then ''
-              substituteInPlace configure \
-                --replace-fail 'check_inline_asm inline_asm_nonlocal_labels' \
-                               'disable inline_asm_nonlocal_labels #'
-            '' else "");
+          patches = (old.patches or [ ])
+            ++ (if isPower then [ ./patches/ppc-no-ppc4xx.patch ] else [ ])
+            ++ (if isWindows then [ ./patches/mingw-no-asm-nonlocal-labels.patch ] else [ ]);
           # libavutil/riscv/cpu.c builds whenever <asm/hwprobe.h> is present and
           # calls syscall(__NR_riscv_hwprobe, …), but this musl's <sys/syscall.h>
           # predates that syscall, so the constant is undeclared. It's a stable
@@ -178,13 +140,13 @@
       # `sp` is the static package set for the target (pkgsStatic or
       # mingwStaticCross); we take chromaprint/ffmpeg-headless from it.
       # withExamples drops the demo binaries; withTools (default) keeps fpcalc.
-      mk = { sp, engineStdenv ? null, appleSdk ? null, ffmpegStdenv ? null }:
+      mk = { sp, appleSdk ? null, ffmpegStdenv ? null }:
         let
           chromaprint = sp.chromaprint;
           host = chromaprint.stdenv.hostPlatform;
           hostIsDarwin = host.isDarwin or false;
           # "can this host run what it just built" — true on the three native
-          # CI jobs, false on every cross target.
+          # CI jobs and on i686 built on x86_64, false on the other crosses.
           canRun = chromaprint.stdenv.buildPlatform.canExecute host;
         in
         (chromaprint.override ({
@@ -193,7 +155,7 @@
             inherit appleSdk ffmpegStdenv;
           };
           withExamples = false;
-        } // sp.lib.optionalAttrs (engineStdenv != null) { stdenv = engineStdenv; })).overrideAttrs (old: {
+        })).overrideAttrs (old: {
           # Upstream's suite is 98 unit tests plus a fingerprint of a real
           # 9 MB recording compared against a known hash. It passes under
           # static musl and the engine and runs in milliseconds.
@@ -230,10 +192,7 @@
     ulib.mkStandaloneFlake {
       inherit self;
       name = "fpcalc";
-      # chromaprint ships no man page, so the man step warn-skips (nothing to
-      # graft) and the binary carries no payload at all. binName drives that
-      # (absent) lookup, not the chromaprint attr, so no pkgsAttr is needed.
-      binName = "fpcalc";
+      # chromaprint ships no man page, so the binary carries no payload at all.
       smoke = [ "-version" ];
       smokePattern = "fpcalc version 1\\.6";
       engine = "unpin-llvm";
@@ -244,7 +203,6 @@
       };
       build = pkgs: mk {
         sp = pkgs.pkgsStatic;
-        engineStdenv = engStdenv pkgs;
         # Give ffmpeg the DYNAMIC apple-sdk (from `pkgs`, not pkgsStatic). Its
         # pkgsStatic variant is the static SDK that rebuilds Apple's Csu/crt — see
         # minimalFfmpeg. The dynamic SDK provides ffmpeg's framework/header
