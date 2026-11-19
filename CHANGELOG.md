@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Changed
+
+- fpcalc now carries the same FFmpeg as the `ffmpeg` package instead of a
+  decode-only cut of it. It reads http and https URLs, tracker modules
+  (MOD/XM/IT/S3M) and the formats behind FFmpeg's external libraries; the
+  fingerprints of formats it already read are unchanged. The Linux x86_64
+  binary grows from 19 MB to 97 MB.
+
 ## [1.6.0-2] - 2026-09-26
 
 ### Changed

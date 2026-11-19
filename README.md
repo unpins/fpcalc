@@ -9,9 +9,9 @@ binary, built natively for Linux, macOS, and Windows.
 ![macOS](https://img.shields.io/badge/macOS-✓-success?logo=apple&logoColor=white)
 ![Windows](https://img.shields.io/badge/Windows-✓-success?logo=windows&logoColor=white)
 
-Reads an audio file in any common format (MP3/FLAC/Ogg/AAC/Opus/WAV/…), decodes
-it, and prints its Chromaprint fingerprint — with a full FFmpeg decoder built
-in.
+Reads an audio file in any common format (MP3/FLAC/Ogg/AAC/Opus/WAV/…) or from
+an http(s) URL, decodes it, and prints its Chromaprint fingerprint — with a
+full FFmpeg built in.
 
 Part of the [unpins](https://unpins.org) catalog; install it with [`unpin`](https://github.com/unpins/unpin): `unpin install fpcalc`.
 
@@ -52,23 +52,21 @@ The [Releases](https://github.com/unpins/fpcalc/releases) page has standalone bi
 
 - Single upstream CLI (`fpcalc`); the `libchromaprint` library is not
   user-facing, so it is linked in rather than shipped.
-- fpcalc only **decodes** audio, so FFmpeg is cut to a decode-only core — just
-  `libavcodec`/`libavformat`/`libavutil`/`libswresample`, with **no external
-  codec libraries**. FFmpeg's native decoders still cover the common formats, so
-  the full video/subtitle/network closure (x264/x265/dav1d/gnutls/…) is dropped.
-- **Windows:** built with mingw-w64. FFmpeg's Windows-only MediaFoundation/D3D/DXVA paths are
-  disabled — fpcalc never uses them and their COM GUIDs would otherwise go
-  undefined when linking the library directly.
-- No man page upstream, so none is embedded.
-
-### Tests
-
-Upstream's test suite runs on every build that can execute what it just
-produced — the Linux x86_64/arm64 and macOS jobs in CI — and it is more than
-unit tests: it also fingerprints a full nine-megabyte recording and checks the
-result against a known hash. The installed binary is then measured once more
-against the answer key upstream keeps beside its code: a sample MP3 and the
-exact output `fpcalc` must print for it. Cross-compiled targets (Windows, i686,
-ppc64le, riscv64, armv7l) can't run where they are built, so there the version
-smoke is the floor; the fingerprints they produce were compared by hand against
-the Linux ones and are identical, byte for byte, on every platform shipped.
+- FFmpeg is the same build the [`ffmpeg`](https://github.com/unpins/ffmpeg)
+  package ships, so `fpcalc` reads every format and protocol it does: network
+  URLs, tracker modules (MOD/XM/IT/S3M), and the codecs behind external
+  libraries.
+- **https:** server certificates are not checked, as in upstream FFmpeg, and
+  `fpcalc` has no option to turn the check on.
+- **Windows:** needs the Universal C Runtime, which is part of Windows 10 and
+  later and comes through Windows Update on 7 and 8.1.
+- **Not included:** what the `ffmpeg` package leaves out (hardware decoding
+  among it), and a man page — upstream ships none.
+- **Tests:** upstream's suite runs on every build that can execute what it just
+  produced (Linux x86_64, i686 and arm64, macOS). Beyond its unit tests it
+  fingerprints a nine-megabyte recording and checks the result against a known
+  hash. The installed binary is then checked against the answer key upstream
+  keeps beside its code: a sample MP3 and the exact output `fpcalc` must print
+  for it. Windows, ppc64le, riscv64 and armv7l can't run where they are built,
+  so CI stops at the version smoke there; their fingerprints of that MP3 were
+  compared by hand and match the answer key.
